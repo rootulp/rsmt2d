@@ -3,8 +3,7 @@ package rsmt2d
 import (
 	"bytes"
 	"fmt"
-
-	"gonum.org/v1/gonum/mat"
+	"math"
 )
 
 const (
@@ -14,8 +13,7 @@ const (
 
 // ByzantineRowError is thrown when there is a repaired row does not match the expected row merkle root.
 type ByzantineRowError struct {
-	RowNumber      uint
-	LastGoodSquare ExtendedDataSquare
+	RowNumber uint
 }
 
 func (e *ByzantineRowError) Error() string {
@@ -24,8 +22,7 @@ func (e *ByzantineRowError) Error() string {
 
 // ByzantineColumnError is thrown when there is a repaired column does not match the expected column merkle root.
 type ByzantineColumnError struct {
-	ColumnNumber   uint
-	LastGoodSquare ExtendedDataSquare
+	ColumnNumber uint
 }
 
 func (e *ByzantineColumnError) Error() string {
@@ -49,13 +46,12 @@ func RepairExtendedDataSquare(
 	codec CodecType,
 	treeCreatorFn TreeConstructorFn,
 ) (*ExtendedDataSquare, error) {
-	matrixData := make([]float64, len(data))
+	width := int(math.Ceil(math.Sqrt(float64(len(data)))))
+	bitMask := NewBitMatrix(width, len(data))
 	var chunkSize int
 	for i := range data {
-		if data[i] == nil {
-			matrixData[i] = 0
-		} else {
-			matrixData[i] = 1
+		if data[i] != nil {
+			bitMask.SetFlat(i)
 			if chunkSize == 0 {
 				chunkSize = len(data[i])
 			}
@@ -79,14 +75,12 @@ func RepairExtendedDataSquare(
 		return nil, err
 	}
 
-	matrix := mat.NewDense(int(eds.width), int(eds.width), matrixData)
-
-	err = eds.prerepairSanityCheck(rowRoots, columnRoots, *matrix)
+	err = eds.prerepairSanityCheck(rowRoots, columnRoots, bitMask)
 	if err != nil {
 		return nil, err
 	}
 
-	err = eds.solveCrossword(rowRoots, columnRoots, *matrix)
+	err = eds.solveCrossword(rowRoots, columnRoots, bitMask)
 	if err != nil {
 		return nil, err
 	}
@@ -94,51 +88,53 @@ func RepairExtendedDataSquare(
 	return eds, err
 }
 
-func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][]byte, mask mat.Dense) error {
+func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][]byte, bitMask bitMatrix) error {
 	// Keep repeating until the square is solved
 	var solved bool
-	var progressMade bool
-	var err error
-	var shares [][]byte
-	var rebuiltShares [][]byte
-	var rebuiltExtendedShares [][]byte
 	for {
 		solved = true
-		progressMade = false
+		progressMade := false
 
 		// Loop through every row and column, attempt to rebuild each row or column if incomplete
 		for i := uint(0); i < eds.width; i++ {
 			for mode := range []int{row, column} {
-				var vectorMask mat.Vector
+
+				var isIncomplete bool
+				var isExtendedPartIncomplete bool
 				if mode == row {
-					vectorMask = mask.RowView(int(i))
+					isIncomplete = !bitMask.RowIsOne(int(i))
+					isExtendedPartIncomplete = !bitMask.RowRangeIsOne(int(i), int(eds.originalDataWidth), int(eds.width))
 				} else if mode == column {
-					vectorMask = mask.ColView(int(i))
+					isIncomplete = !bitMask.ColumnIsOne(int(i))
+					isExtendedPartIncomplete = !bitMask.ColRangeIsOne(int(i), int(eds.originalDataWidth), int(eds.width))
 				}
 
-				if !vecIsTrue(vectorMask) { // row/column incomplete
+				if isIncomplete { // row/column incomplete
 					// Prepare shares
 					var vectorData [][]byte
-					if mode == row {
-						vectorData = eds.Row(i)
-					} else if mode == column {
-						vectorData = eds.Column(i)
-					}
-					shares = make([][]byte, eds.width)
+					shares := make([][]byte, eds.width)
 					for j := uint(0); j < eds.width; j++ {
-						if vectorMask.AtVec(int(j)) == 1 {
+						var rowIdx, colIdx int
+						if mode == row {
+							rowIdx = int(i)
+							colIdx = int(j)
+							vectorData = eds.Row(i)
+						} else if mode == column {
+							rowIdx = int(j)
+							colIdx = int(i)
+							vectorData = eds.Column(i)
+						}
+						if bitMask.Get(rowIdx, colIdx) {
 							shares[j] = vectorData[j]
 						}
 					}
 
 					// Attempt rebuild
-					rebuiltShares, err = Decode(shares, eds.codec)
-					if err == nil { // repair successful
+					rebuiltShares, err := Decode(shares, eds.codec)
+					if err != nil { // repair unsuccessful
+						solved = false
+					} else { // repair successful
 						progressMade = true
-
-						// Make backup of square
-						edsBackup, _ := eds.deepCopy()
-
 						// Insert rebuilt shares into square
 						for p, s := range rebuiltShares {
 							if mode == row {
@@ -147,50 +143,27 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 								eds.setCell(uint(p), i, s)
 							}
 						}
-
-						// Rebuild extended part if incomplete
-						if !vecSliceIsTrue(vectorMask, int(eds.originalDataWidth), int(eds.width)) {
-							if mode == row {
-								rebuiltExtendedShares, err = Encode(eds.rowSlice(i, 0, eds.originalDataWidth), eds.codec)
-							} else if mode == column {
-								rebuiltExtendedShares, err = Encode(eds.columnSlice(0, i, eds.originalDataWidth), eds.codec)
-							}
-							if err != nil {
-								return err
-							}
-							for p, s := range rebuiltExtendedShares {
-								if mode == row {
-									eds.setCell(i, eds.originalDataWidth+uint(p), s)
-								} else if mode == column {
-									eds.setCell(eds.originalDataWidth+uint(p), i, s)
-								}
+						if isExtendedPartIncomplete {
+							err2 := rebuildExtendedPart(eds, mode, i)
+							if err2 != nil {
+								return err2
 							}
 						}
 
-						// Check that rebuilt vector matches given merkle root
-						if mode == row {
-							if !bytes.Equal(eds.RowRoot(i), rowRoots[i]) {
-								return &ByzantineRowError{i, edsBackup}
-							}
-						} else if mode == column {
-							if !bytes.Equal(eds.ColRoot(i), columnRoots[i]) {
-								return &ByzantineColumnError{i, edsBackup}
-							}
+						err3 := verifyRoots(rowRoots, columnRoots, mode, eds, i)
+						if err3 != nil {
+							return err3
 						}
 
 						// Check that newly completed orthogonal vectors match their new merkle roots
 						for j := uint(0); j < eds.width; j++ {
-							if vectorMask.AtVec(int(j)) == 0 {
-								if mode == row {
-									adjMask := mask.ColView(int(j))
-									if vecNumTrue(adjMask) == adjMask.Len()-1 && !bytes.Equal(eds.ColRoot(j), columnRoots[j]) {
-										return &ByzantineColumnError{j, edsBackup}
-									}
-								} else if mode == column {
-									adjMask := mask.RowView(int(j))
-									if vecNumTrue(adjMask) == adjMask.Len()-1 && !bytes.Equal(eds.RowRoot(j), rowRoots[j]) {
-										return &ByzantineRowError{j, edsBackup}
-									}
+							if mode == row && !bitMask.Get(int(i), int(j)) {
+								if bitMask.ColumnIsOne(int(j)) && !bytes.Equal(eds.ColRoot(j), columnRoots[j]) {
+									return &ByzantineColumnError{j}
+								}
+							} else if mode == column && !bitMask.Get(int(j), int(i)) {
+								if bitMask.RowIsOne(int(j)) && !bytes.Equal(eds.RowRoot(j), rowRoots[j]) {
+									return &ByzantineRowError{j}
 								}
 							}
 						}
@@ -198,15 +171,13 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 						// Set vector mask to true
 						if mode == row {
 							for j := 0; j < int(eds.width); j++ {
-								mask.Set(int(i), j, 1)
+								bitMask.Set(int(i), j)
 							}
 						} else if mode == column {
 							for j := 0; j < int(eds.width); j++ {
-								mask.Set(j, int(i), 1)
+								bitMask.Set(j, int(i))
 							}
 						}
-					} else { // repair unsuccessful
-						solved = false
 					}
 				}
 			}
@@ -222,19 +193,53 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 	return nil
 }
 
-func (eds *ExtendedDataSquare) prerepairSanityCheck(rowRoots [][]byte, columnRoots [][]byte, mask mat.Dense) error {
+func verifyRoots(rowRoots [][]byte, columnRoots [][]byte, mode int, eds *ExtendedDataSquare, i uint) error {
+	// Check that rebuilt vector matches given merkle root
+	if mode == row {
+		if !bytes.Equal(eds.RowRoot(i), rowRoots[i]) {
+			return &ByzantineRowError{i}
+		}
+	} else if mode == column {
+		if !bytes.Equal(eds.ColRoot(i), columnRoots[i]) {
+			return &ByzantineColumnError{i}
+		}
+	}
+	return nil
+}
+
+func rebuildExtendedPart(eds *ExtendedDataSquare, mode int, rowOrColIdx uint) error {
+	var data [][]byte
+	if mode == row {
+		data = eds.rowSlice(rowOrColIdx, 0, eds.originalDataWidth)
+	} else if mode == column {
+		data = eds.columnSlice(0, rowOrColIdx, eds.originalDataWidth)
+	}
+	rebuiltExtendedShares, err := Encode(data, eds.codec)
+	if err != nil {
+		return err
+	}
+	for p, s := range rebuiltExtendedShares {
+		if mode == row {
+			eds.setCell(rowOrColIdx, eds.originalDataWidth+uint(p), s)
+		} else if mode == column {
+			eds.setCell(eds.originalDataWidth+uint(p), rowOrColIdx, s)
+		}
+	}
+
+	return nil
+}
+
+func (eds *ExtendedDataSquare) prerepairSanityCheck(rowRoots [][]byte, columnRoots [][]byte, bitMask bitMatrix) error {
 	var shares [][]byte
 	var err error
 	for i := uint(0); i < eds.width; i++ {
-		rowMask := mask.RowView(int(i))
-		columnMask := mask.ColView(int(i))
-		rowMaskIsVec := vecIsTrue(rowMask)
-		columnMaskIsVec := vecIsTrue(columnMask)
+		rowIsComplete := bitMask.RowIsOne(int(i))
+		colIsComplete := bitMask.ColumnIsOne(int(i))
 
 		// if there's no missing data in the this row
 		if noMissingData(eds.Row(i)) {
 			// ensure that the roots are equal and that rowMask is a vector
-			if rowMaskIsVec && !bytes.Equal(rowRoots[i], eds.RowRoot(i)) {
+			if rowIsComplete && !bytes.Equal(rowRoots[i], eds.RowRoot(i)) {
 				return fmt.Errorf("bad root input: row %d expected %v got %v", i, rowRoots[i], eds.RowRoot(i))
 			}
 		}
@@ -242,28 +247,28 @@ func (eds *ExtendedDataSquare) prerepairSanityCheck(rowRoots [][]byte, columnRoo
 		// if there's no missing data in the this col
 		if noMissingData(eds.Column(i)) {
 			// ensure that the roots are equal and that rowMask is a vector
-			if columnMaskIsVec && !bytes.Equal(columnRoots[i], eds.ColRoot(i)) {
+			if colIsComplete && !bytes.Equal(columnRoots[i], eds.ColRoot(i)) {
 				return fmt.Errorf("bad root input: col %d expected %v got %v", i, columnRoots[i], eds.ColRoot(i))
 			}
 		}
 
-		if rowMaskIsVec {
+		if rowIsComplete {
 			shares, err = Encode(eds.rowSlice(i, 0, eds.originalDataWidth), eds.codec)
 			if err != nil {
 				return err
 			}
 			if !bytes.Equal(flattenChunks(shares), flattenChunks(eds.rowSlice(i, eds.originalDataWidth, eds.originalDataWidth))) {
-				return &ByzantineRowError{i, *eds}
+				return &ByzantineRowError{i}
 			}
 		}
 
-		if columnMaskIsVec {
+		if colIsComplete {
 			shares, err = Encode(eds.columnSlice(0, i, eds.originalDataWidth), eds.codec)
 			if err != nil {
 				return err
 			}
 			if !bytes.Equal(flattenChunks(shares), flattenChunks(eds.columnSlice(eds.originalDataWidth, i, eds.originalDataWidth))) {
-				return &ByzantineColumnError{i, *eds}
+				return &ByzantineColumnError{i}
 			}
 		}
 	}
@@ -278,35 +283,4 @@ func noMissingData(input [][]byte) bool {
 		}
 	}
 	return true
-}
-
-func vecIsTrue(vec mat.Vector) bool {
-	for i := 0; i < vec.Len(); i++ {
-		if vec.AtVec(i) == 0 {
-			return false
-		}
-	}
-
-	return true
-}
-
-func vecSliceIsTrue(vec mat.Vector, start int, end int) bool {
-	for i := start; i < end; i++ {
-		if vec.AtVec(i) == 0 {
-			return false
-		}
-	}
-
-	return true
-}
-
-func vecNumTrue(vec mat.Vector) int {
-	var counter int
-	for i := 0; i < vec.Len(); i++ {
-		if vec.AtVec(i) == 1 {
-			counter++
-		}
-	}
-
-	return counter
 }
