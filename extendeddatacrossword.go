@@ -90,15 +90,12 @@ func RepairExtendedDataSquare(
 
 func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][]byte, mask mat.Dense) error {
 	// Keep repeating until the square is solved
-	var solved bool
-	var progressMade bool
-	var err error
 	var shares [][]byte
-	var rebuiltShares [][]byte
 	var rebuiltExtendedShares [][]byte
-	for {
+	solved := false
+	for !solved {
 		solved = true
-		progressMade = false
+		progressMade := false
 
 		// Loop through every row and column, attempt to rebuild each row or column if incomplete
 		for i := uint(0); i < eds.width; i++ {
@@ -126,8 +123,10 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 					}
 
 					// Attempt rebuild
-					rebuiltShares, err = Decode(shares, eds.codec)
-					if err == nil { // repair successful
+					rebuiltShares, err := Decode(shares, eds.codec)
+					if err != nil { // repair unsuccessful
+						solved = false
+					} else { // repair successful
 						progressMade = true
 
 						// Insert rebuilt shares into square
@@ -196,16 +195,12 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 								mask.Set(j, int(i), 1)
 							}
 						}
-					} else { // repair unsuccessful
-						solved = false
 					}
 				}
 			}
 		}
 
-		if solved {
-			break
-		} else if !progressMade {
+		if !progressMade {
 			return ErrUnrepairableDataSquare
 		}
 	}
