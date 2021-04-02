@@ -90,39 +90,39 @@ func RepairExtendedDataSquare(
 
 func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][]byte, bitMask bitMatrix) error {
 	// Keep repeating until the square is solved
-	var solved bool
-	for {
+	solved := false
+	for !solved {
 		solved = true
 		progressMade := false
 
 		// Loop through every row and column, attempt to rebuild each row or column if incomplete
-		for i := uint(0); i < eds.width; i++ {
+		for i := 0; i < int(eds.width); i++ {
 			for mode := range []int{row, column} {
 
 				var isIncomplete bool
 				var isExtendedPartIncomplete bool
 				if mode == row {
-					isIncomplete = !bitMask.RowIsOne(int(i))
-					isExtendedPartIncomplete = !bitMask.RowRangeIsOne(int(i), int(eds.originalDataWidth), int(eds.width))
+					isIncomplete = !bitMask.RowIsOne(i)
+					isExtendedPartIncomplete = !bitMask.RowRangeIsOne(i, int(eds.originalDataWidth), int(eds.width))
 				} else if mode == column {
-					isIncomplete = !bitMask.ColumnIsOne(int(i))
-					isExtendedPartIncomplete = !bitMask.ColRangeIsOne(int(i), int(eds.originalDataWidth), int(eds.width))
+					isIncomplete = !bitMask.ColumnIsOne(i)
+					isExtendedPartIncomplete = !bitMask.ColRangeIsOne(i, int(eds.originalDataWidth), int(eds.width))
 				}
 
 				if isIncomplete { // row/column incomplete
 					// Prepare shares
 					var vectorData [][]byte
 					shares := make([][]byte, eds.width)
-					for j := uint(0); j < eds.width; j++ {
+					for j := 0; j < int(eds.width); j++ {
 						var rowIdx, colIdx int
 						if mode == row {
-							rowIdx = int(i)
-							colIdx = int(j)
-							vectorData = eds.Row(i)
+							rowIdx = i
+							colIdx = j
+							vectorData = eds.Row(uint(i))
 						} else if mode == column {
-							rowIdx = int(j)
-							colIdx = int(i)
-							vectorData = eds.Column(i)
+							rowIdx = j
+							colIdx = i
+							vectorData = eds.Column(uint(i))
 						}
 						if bitMask.Get(rowIdx, colIdx) {
 							shares[j] = vectorData[j]
@@ -138,32 +138,32 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 						// Insert rebuilt shares into square
 						for p, s := range rebuiltShares {
 							if mode == row {
-								eds.setCell(i, uint(p), s)
+								eds.setCell(uint(i), uint(p), s)
 							} else if mode == column {
-								eds.setCell(uint(p), i, s)
+								eds.setCell(uint(p), uint(i), s)
 							}
 						}
 						if isExtendedPartIncomplete {
-							err2 := rebuildExtendedPart(eds, mode, i)
+							err2 := rebuildExtendedPart(eds, mode, uint(i))
 							if err2 != nil {
 								return err2
 							}
 						}
 
-						err3 := verifyRoots(rowRoots, columnRoots, mode, eds, i)
+						err3 := verifyRoots(rowRoots, columnRoots, mode, eds, uint(i))
 						if err3 != nil {
 							return err3
 						}
 
 						// Check that newly completed orthogonal vectors match their new merkle roots
-						for j := uint(0); j < eds.width; j++ {
-							if mode == row && !bitMask.Get(int(i), int(j)) {
-								if bitMask.ColumnIsOne(int(j)) && !bytes.Equal(eds.ColRoot(j), columnRoots[j]) {
-									return &ByzantineColumnError{j}
+						for j := 0; j < int(eds.width); j++ {
+							if mode == row && !bitMask.Get(i, j) {
+								if bitMask.ColumnIsOne(j) && !bytes.Equal(eds.ColRoot(uint(j)), columnRoots[j]) {
+									return &ByzantineColumnError{uint(j)}
 								}
-							} else if mode == column && !bitMask.Get(int(j), int(i)) {
-								if bitMask.RowIsOne(int(j)) && !bytes.Equal(eds.RowRoot(j), rowRoots[j]) {
-									return &ByzantineRowError{j}
+							} else if mode == column && !bitMask.Get(j, i) {
+								if bitMask.RowIsOne(j) && !bytes.Equal(eds.RowRoot(uint(j)), rowRoots[j]) {
+									return &ByzantineRowError{uint(j)}
 								}
 							}
 						}
@@ -171,11 +171,11 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 						// Set vector mask to true
 						if mode == row {
 							for j := 0; j < int(eds.width); j++ {
-								bitMask.Set(int(i), j)
+								bitMask.Set(i, j)
 							}
 						} else if mode == column {
 							for j := 0; j < int(eds.width); j++ {
-								bitMask.Set(j, int(i))
+								bitMask.Set(j, i)
 							}
 						}
 					}
@@ -183,9 +183,7 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 			}
 		}
 
-		if solved {
-			break
-		} else if !progressMade {
+		if !progressMade {
 			return &UnrepairableDataSquareError{}
 		}
 	}
