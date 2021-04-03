@@ -10,7 +10,6 @@ import (
 
 var (
 	encodedDataDump [][]byte
-	decodedDataDump [][]byte
 )
 
 const benchmarkDivider = "-------------------------------"

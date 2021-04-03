@@ -63,6 +63,7 @@ func genRandDS(width int) [][]byte {
 	count := width * width
 	for i := 0; i < count; i++ {
 		share := make([]byte, 256)
+		//nolint: errcheck
 		rand.Read(share)
 		ds = append(ds, share)
 	}
