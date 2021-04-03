@@ -2,6 +2,7 @@ package rsmt2d
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 
 	"gonum.org/v1/gonum/mat"
@@ -90,7 +91,7 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 		progressMade := false
 		// Loop through every row and column, attempt to rebuild each row or column if incomplete
 		for i := uint(0); i < eds.width; i++ {
-			// first handle row:
+			// row:
 			vectorMask := mask.RowView(int(i))
 			rowIsIncomplete := !vecIsTrue(vectorMask)
 			if rowIsIncomplete {
@@ -110,9 +111,10 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 				}
 			}
 
-			// then handle column
+			// column:
 			vectorMask = mask.ColView(int(i))
-			if !vecIsTrue(vectorMask) { // column incomplete
+			isColumnIncomplete := !vecIsTrue(vectorMask)
+			if isColumnIncomplete {
 				shares := eds.prepareShares(eds.Column(i), vectorMask)
 
 				// Attempt rebuild
@@ -129,9 +131,8 @@ func (eds *ExtendedDataSquare) solveCrossword(rowRoots [][]byte, columnRoots [][
 				}
 			}
 		}
-
 		if !progressMade {
-			return &UnrepairableDataSquareError{}
+			return ErrUnrepairableDataSquare
 		}
 	}
 
@@ -146,7 +147,6 @@ func (eds *ExtendedDataSquare) updateRows(rowRoots [][]byte, columnRoots [][]byt
 
 	// Rebuild extended part if incomplete
 	if !vecSliceIsTrue(vectorMask, int(eds.originalDataWidth), int(eds.width)) {
-		var rebuiltExtendedShares [][]byte
 		rebuiltExtendedShares, err := Encode(eds.rowSlice(i, 0, eds.originalDataWidth), eds.codec)
 		if err != nil {
 			return err
@@ -157,18 +157,8 @@ func (eds *ExtendedDataSquare) updateRows(rowRoots [][]byte, columnRoots [][]byt
 	}
 	// Check that rebuilt vector matches given merkle root
 	if !bytes.Equal(eds.RowRoot(i), rowRoots[i]) {
-		return &ByzantineRowError{i, edsBackup}
+		return &ErrByzantineRow{i}
 	}
-						// Check that rebuilt vector matches given merkle root
-						if mode == row {
-							if !bytes.Equal(eds.RowRoot(i), rowRoots[i]) {
-								return &ErrByzantineRow{i}
-							}
-						} else if mode == column {
-							if !bytes.Equal(eds.ColRoot(i), columnRoots[i]) {
-								return &ErrByzantineColumn{i}
-							}
-						}
 
 	// Check that newly completed orthogonal vectors match their new merkle roots
 	for j := uint(0); j < eds.width; j++ {
@@ -187,10 +177,6 @@ func (eds *ExtendedDataSquare) updateRows(rowRoots [][]byte, columnRoots [][]byt
 }
 
 func (eds *ExtendedDataSquare) updateCol(rowRoots [][]byte, columnRoots [][]byte, mask *mat.Dense, i uint, rebuiltShares [][]byte, vectorMask mat.Vector) error {
-	// repair successful
-	// Make backup of square
-	edsBackup, _ := eds.deepCopy()
-
 	// Insert rebuilt shares into square
 	for p, s := range rebuiltShares {
 		eds.setCell(uint(p), i, s)
@@ -209,7 +195,7 @@ func (eds *ExtendedDataSquare) updateCol(rowRoots [][]byte, columnRoots [][]byte
 
 	// Check that rebuilt vector matches given merkle root
 	if !bytes.Equal(eds.ColRoot(i), columnRoots[i]) {
-		return &ByzantineRowError{i, edsBackup}
+		return &ErrByzantineColumn{i}
 	}
 
 	// Check that newly completed orthogonal vectors match their new merkle roots
@@ -225,13 +211,9 @@ func (eds *ExtendedDataSquare) updateCol(rowRoots [][]byte, columnRoots [][]byte
 	// Set vector mask to true
 	for j := 0; j < int(eds.width); j++ {
 		mask.Set(j, int(i), 1)
-			// Set vector mask to true
-			for j := 0; j < int(eds.width); j++ {
-				mask.Set(j, int(i), 1)
-			}
-
-		if !progressMade {
-			return ErrUnrepairableDataSquare
+		// Set vector mask to true
+		for j := 0; j < int(eds.width); j++ {
+			mask.Set(j, int(i), 1)
 		}
 	}
 	return nil
