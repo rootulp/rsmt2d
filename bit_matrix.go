@@ -7,7 +7,7 @@ type bitMatrix struct {
 	squareSize int
 }
 
-func NewBitMatrix(squareSize, bits int) bitMatrix {
+func newBitMatrix(squareSize, bits int) bitMatrix {
 	if squareSize*squareSize != bits {
 		panic(fmt.Sprintf("invalid arguments %v*%v != %v", squareSize, squareSize, bits))
 	}
@@ -79,7 +79,7 @@ func (bm bitMatrix) RowRangeIsOne(r, start, end int) bool {
 }
 
 func (bm bitMatrix) ColRangeIsOne(c, start, end int) bool {
-	for r := start; r < end && r < bm.squareSize; r++ {
+	for r := start; r <= end && r < bm.squareSize; r++ {
 		if !bm.Get(r, c) {
 			return false
 		}

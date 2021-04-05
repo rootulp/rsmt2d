@@ -47,7 +47,7 @@ func RepairExtendedDataSquare(
 	treeCreatorFn TreeConstructorFn,
 ) (*ExtendedDataSquare, error) {
 	width := int(math.Ceil(math.Sqrt(float64(len(data)))))
-	bitMask := NewBitMatrix(width, len(data))
+	bitMask := newBitMatrix(width, len(data))
 	var chunkSize int
 	for i := range data {
 		if data[i] != nil {
