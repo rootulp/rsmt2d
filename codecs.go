@@ -6,6 +6,7 @@ const (
 	LeopardFF16 = "LeopardFF16"
 	LeopardFF8  = "LeopardFF8"
 	RSGF8       = "RSFG8"
+	KPGF8       = "KPFG8"
 )
 
 type Codec interface {
