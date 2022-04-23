@@ -68,7 +68,6 @@ func generateMissingData(count int, codec Codec) [][]byte {
 	if err != nil {
 		panic(err)
 	}
-	//output := append(randData, encoded...)
 
 	// remove half of the shares randomly
 	for i := 0; i < (count / 2); {
