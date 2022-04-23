@@ -63,6 +63,7 @@ func RepairExtendedDataSquare(
 	for _, d := range data {
 		if d != nil {
 			isNotEmpty = true
+			break
 		}
 	}
 	if !isNotEmpty {
@@ -201,7 +202,6 @@ func (eds *ExtendedDataSquare) solveCrosswordCol(
 	vectorData := eds.col(uint(c))
 	for r := 0; r < int(eds.width); r++ {
 		shares[r] = vectorData[r]
-
 	}
 
 	isExtendedPartIncomplete := !eds.colRangeNoMissingData(uint(c), eds.originalDataWidth, eds.width)
