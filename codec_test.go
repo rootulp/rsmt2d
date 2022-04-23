@@ -68,17 +68,17 @@ func generateMissingData(count int, codec Codec) [][]byte {
 	if err != nil {
 		panic(err)
 	}
-	output := append(randData, encoded...)
+	//output := append(randData, encoded...)
 
 	// remove half of the shares randomly
 	for i := 0; i < (count / 2); {
 		ind := rand.Intn(count)
-		if len(output[ind]) == 0 {
+		if len(encoded[ind]) == 0 {
 			continue
 		}
-		output[ind] = []byte{}
+		encoded[ind] = nil
 		i++
 	}
 
-	return output
+	return encoded
 }
