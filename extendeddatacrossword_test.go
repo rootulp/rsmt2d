@@ -42,7 +42,7 @@ func TestRepairExtendedDataSquare(t *testing.T) {
 		flattened[12], flattened[13] = nil, nil
 		err = RepairExtendedDataSquare(original.getRowRoots(), original.getColRoots(), flattened, codec, NewDefaultTree)
 		if err != nil {
-			t.Errorf("unexpected err while repairing data square: %v, codec: :%s", err, codecName)
+			t.Errorf("unexpected err while repairing data square: %v, codec: %s", err, codecName)
 		} else {
 			assert.Equal(t, original.getCell(0, 0), ones)
 			assert.Equal(t, original.getCell(0, 1), twos)
@@ -80,7 +80,7 @@ func TestRepairExtendedDataSquare(t *testing.T) {
 		err = RepairExtendedDataSquare(corrupted.getRowRoots(), corrupted.getColRoots(), corrupted.flattened(), codec, NewDefaultTree)
 		var byzRow *ErrByzantineRow
 		if !errors.As(err, &byzRow) {
-			t.Errorf("did not return a ErrByzantineRow for a bad row; got: %v", err)
+			t.Fatalf("did not return a ErrByzantineRow for a bad row; got: %v (codec: %v)", err, codecName)
 		}
 		// Construct the fraud proof
 		fraudProof := PseudoFraudProof{row, byzRow.RowNumber, byzRow.Shares}
