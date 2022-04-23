@@ -12,6 +12,7 @@ var (
 )
 
 func BenchmarkEncoding(b *testing.B) {
+	b.ReportAllocs()
 	// generate some fake data
 	data := generateRandData(128)
 	for codecName, codec := range codecs {
@@ -44,6 +45,7 @@ func generateRandData(count int) [][]byte {
 }
 
 func BenchmarkDecoding(b *testing.B) {
+	b.ReportAllocs()
 	// generate some fake data
 	for codecName, codec := range codecs {
 		data := generateMissingData(128, codec)

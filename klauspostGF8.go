@@ -12,18 +12,26 @@ func init() {
 	registerCodec(KPGF8, NewKpGF8Codec())
 }
 
-type kpGF8Codec struct{}
+type kpGF8Codec struct {
+	encCache map[int]reedsolomon.Encoder
+}
 
 func NewKpGF8Codec() *kpGF8Codec {
-	return &kpGF8Codec{}
+	return &kpGF8Codec{make(map[int]reedsolomon.Encoder)}
 }
 
 func (k kpGF8Codec) Encode(data [][]byte) ([][]byte, error) {
-	// TODO: make sure we re-use these instead of re-initializing:
 	l0 := len(data[0])
-	enc, err := reedsolomon.New(len(data), len(data))
-	if err != nil {
-		return nil, err
+	var enc reedsolomon.Encoder
+	var err error
+	if value, ok := k.encCache[len(data)]; ok {
+		enc = value
+	} else {
+		enc, err = reedsolomon.New(len(data), len(data))
+		if err != nil {
+			return nil, err
+		}
+		k.encCache[len(data)] = enc
 	}
 	res := make([][]byte, len(data)*2)
 	copy(res, data)
@@ -42,10 +50,16 @@ func (k kpGF8Codec) Decode(data [][]byte) ([][]byte, error) {
 		return nil, fmt.Errorf("expected even length data, got: %v", len(data))
 	}
 	origLen := len(data) / 2
-	// TODO: make sure we re-use these instead of re-initializing:
-	enc, err := reedsolomon.New(origLen, origLen)
-	if err != nil {
-		return nil, err
+	var enc reedsolomon.Encoder
+	var err error
+	if value, ok := k.encCache[origLen]; ok {
+		enc = value
+	} else {
+		enc, err = reedsolomon.New(origLen, origLen)
+		if err != nil {
+			return nil, err
+		}
+		k.encCache[len(data)] = enc
 	}
 	if err := enc.Reconstruct(data); err != nil {
 		return nil, err
