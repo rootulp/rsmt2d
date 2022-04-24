@@ -13,11 +13,12 @@ var (
 
 func BenchmarkEncoding(b *testing.B) {
 	b.ReportAllocs()
+	shares, shareSize := 128, 512
 	// generate some fake data
-	data := generateRandData(128)
+	data := generateRandomChunkData(shares, shareSize)
 	for codecName, codec := range codecs {
 		b.Run(
-			fmt.Sprintf("Encoding 128 shares using %s", codecName),
+			fmt.Sprintf("Encoding %v shares of size %v using %s", shares, shareSize, codecName),
 			func(b *testing.B) {
 				for n := 0; n < b.N; n++ {
 					encodedData, err := codec.Encode(data)
@@ -31,10 +32,10 @@ func BenchmarkEncoding(b *testing.B) {
 	}
 }
 
-func generateRandData(count int) [][]byte {
-	out := make([][]byte, count)
-	for i := 0; i < count; i++ {
-		randData := make([]byte, count)
+func generateRandomChunkData(shares, shareSize int) [][]byte {
+	out := make([][]byte, shares)
+	for i := 0; i < shares; i++ {
+		randData := make([]byte, shareSize)
 		_, err := rand.Read(randData)
 		if err != nil {
 			panic(err)
@@ -45,12 +46,13 @@ func generateRandData(count int) [][]byte {
 }
 
 func BenchmarkDecoding(b *testing.B) {
+	shares, shareSize := 128, 512
 	b.ReportAllocs()
 	// generate some fake data
 	for codecName, codec := range codecs {
-		data := generateMissingData(128, codec)
+		data := generateMissingData(shares, shareSize, codec)
 		b.Run(
-			fmt.Sprintf("Decoding 128 shares using %s", codecName),
+			fmt.Sprintf("Decoding %v shares size %v using %v", shares, shareSize, codecName),
 			func(b *testing.B) {
 				for n := 0; n < b.N; n++ {
 					encodedData, err := codec.Decode(data)
@@ -64,8 +66,8 @@ func BenchmarkDecoding(b *testing.B) {
 	}
 }
 
-func generateMissingData(count int, codec Codec) [][]byte {
-	randData := generateRandData(count)
+func generateMissingData(count, shareSize int, codec Codec) [][]byte {
+	randData := generateRandomChunkData(count, shareSize)
 	encoded, err := codec.Encode(randData)
 	if err != nil {
 		panic(err)
