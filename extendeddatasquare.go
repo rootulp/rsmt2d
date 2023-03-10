@@ -129,22 +129,22 @@ func (eds *ExtendedDataSquare) erasureExtendSquare(codec Codec) error {
 		return err
 	}
 
-	// Extend extended square horizontally
+	// Extend extended square vertically
 	//  ------- -------
 	// |       |       |
 	// |   O   |   E   |
-	// |       |       |
+	// |       |   ↓   |
 	//  ------- -------
 	// |       |       |
-	// |   E → |   E   |
+	// |   E   |   E   |
 	// |       |       |
 	//  ------- -------
 	for i := eds.originalDataWidth; i < eds.width; i++ {
 		i := i
 
-		// Extend horizontally
+		// Extend vertically
 		errs.Go(func() error {
-			return eds.erasureExtendRow(codec, i)
+			return eds.erasureExtendCol(codec, i)
 		})
 	}
 
