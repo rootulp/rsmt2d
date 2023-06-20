@@ -346,6 +346,13 @@ func (eds *ExtendedDataSquare) prerepairSanityCheck(
 				if !bytes.Equal(rowRoots[i], rowRoot) {
 					return fmt.Errorf("bad root input: row %d expected %v got %v", i, rowRoots[i], rowRoot)
 				}
+				parityShares, err := eds.codec.Encode(eds.rowSlice(i, 0, eds.originalDataWidth))
+				if err != nil {
+					return err
+				}
+				if !bytes.Equal(flattenChunks(parityShares), flattenChunks(eds.rowSlice(i, eds.originalDataWidth, eds.originalDataWidth))) {
+					return &ErrByzantineData{Row, i, eds.row(i)}
+				}
 				return nil
 			})
 		}
@@ -361,25 +368,6 @@ func (eds *ExtendedDataSquare) prerepairSanityCheck(
 				if !bytes.Equal(colRoots[i], colRoot) {
 					return fmt.Errorf("bad root input: col %d expected %v got %v", i, colRoots[i], colRoot)
 				}
-				return nil
-			})
-		}
-
-		if rowIsComplete {
-			errs.Go(func() error {
-				parityShares, err := eds.codec.Encode(eds.rowSlice(i, 0, eds.originalDataWidth))
-				if err != nil {
-					return err
-				}
-				if !bytes.Equal(flattenChunks(parityShares), flattenChunks(eds.rowSlice(i, eds.originalDataWidth, eds.originalDataWidth))) {
-					return &ErrByzantineData{Row, i, eds.row(i)}
-				}
-				return nil
-			})
-		}
-
-		if colIsComplete {
-			errs.Go(func() error {
 				parityShares, err := eds.codec.Encode(eds.colSlice(0, i, eds.originalDataWidth))
 				if err != nil {
 					return err
