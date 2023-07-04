@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const SHARD_SIZE = 64
@@ -140,6 +141,39 @@ func TestEDSRowColImmutable(t *testing.T) {
 	if reflect.DeepEqual(col, result.Col(0)) {
 		t.Errorf("Exported EDS Col was mutable")
 	}
+}
+
+func TestRowRoots(t *testing.T) {
+	t.Run("returns row roots for a 4x4 EDS", func(t *testing.T) {
+		eds, err := ComputeExtendedDataSquare([][]byte{
+			ones, twos,
+			threes, fours,
+		}, NewLeoRSCodec(), NewDefaultTree)
+		require.NoError(t, err)
+
+		got := eds.RowRoots()
+		assert.Len(t, got, 4)
+	})
+
+	t.Run("returns row roots for an incomplete EDS", func(t *testing.T) {
+		eds, err := ComputeExtendedDataSquare([][]byte{
+			ones, twos,
+			threes, fours,
+		}, NewLeoRSCodec(), NewDefaultTree)
+		require.NoError(t, err)
+
+		// set the first row to nil to make the EDS incomplete.
+		eds.setCell(0, 0, nil)
+		eds.setCell(0, 1, nil)
+		eds.setCell(0, 2, nil)
+		eds.setCell(0, 3, nil)
+		eds.resetRoots()
+
+		// the behavior of RowRoots is undefined for incomplete EDSs, but I
+		// would expect it to panic
+		got := eds.RowRoots()
+		assert.Len(t, got, 4)
+	})
 }
 
 // dump acts as a data dump for the benchmarks to stop the compiler from making
