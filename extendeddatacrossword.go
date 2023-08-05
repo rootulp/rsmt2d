@@ -468,3 +468,33 @@ func (eds *ExtendedDataSquare) computeSharesRootWithRebuiltShare(shares [][]byte
 	}
 	return tree.Root()
 }
+
+func (eds *ExtendedDataSquare) isRepairable() bool {
+	if eds.percentAvailable() >= 0.75 {
+		// > There is a proof that if ≥ 75% of the entire data is available, then it is possible to recover the remaining data.
+		// See https://ethresear.ch/t/nuances-of-data-recoverability-in-data-availability-sampling/16256
+		return true
+	}
+	if eds.percentAvailable() < 0.25 {
+		// It may be possible to repair the EDS but not with the iterative row/column repair algorithm.
+		// See https://ethresear.ch/t/nuances-of-data-recoverability-in-data-availability-sampling/16256#h-2-you-can-recover-from-much-less-of-the-data-using-algorithms-that-operate-over-the-entire-onm-data-3
+		return false
+	}
+	// If the percentAvailable() is between 25% and 75%, then we can determine
+	// if the square is repairable by assuming that rows and columns with >= 50%
+	// of their data are repairable. Repeat this assumption until the square is
+	// fully repaired or no more progress is made.
+
+	// TODO
+	return false
+}
+
+func (eds *ExtendedDataSquare) percentAvailable() float64 {
+	var available int
+	for _, share := range eds.Flattened() {
+		if share != nil {
+			available++
+		}
+	}
+	return float64(available) / float64(eds.width*eds.width)
+}
